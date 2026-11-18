@@ -192,9 +192,16 @@ func packCacheKey(req FetchRequest, version int) string {
 }
 
 // fetchPack runs the fetch walk (or serves the cached result) and returns
-// the pack bytes plus shallow/unshallow bookkeeping.
+// the pack bytes plus shallow/unshallow bookkeeping. On a cache miss the
+// build is serialized per repository so concurrent identical fetches
+// share one build.
 func fetchPack(repo *Repo, req FetchRequest) (*packCacheEntry, error) {
 	key := packCacheKey(req, repo.Version)
+	if v, ok := repo.packCache.Load(key); ok {
+		return v.(*packCacheEntry), nil
+	}
+	repo.packMu.Lock()
+	defer repo.packMu.Unlock()
 	if v, ok := repo.packCache.Load(key); ok {
 		return v.(*packCacheEntry), nil
 	}

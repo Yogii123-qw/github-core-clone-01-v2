@@ -121,11 +121,7 @@ func run() error {
 	envURL := strings.TrimRight(os.Getenv("MAKEFUN_ENV_URL"), "/")
 	standalonePort := os.Getenv("FORGE_PORT")
 
-	server := &http.Server{
-		Handler:           newForgeServer(NewStore(), expectedToken()),
-		ReadHeaderTimeout: 60 * time.Second,
-		IdleTimeout:       30 * time.Second,
-	}
+	server := newForgeServer(NewStore(), expectedToken())
 
 	if envURL == "" && standalonePort != "" {
 		port, err := strconv.Atoi(strings.TrimSpace(standalonePort))
@@ -155,16 +151,11 @@ func run() error {
 	fmt.Fprintf(os.Stdout, "[forge] listening on port %d\n", port)
 	serveErr := make(chan error, 1)
 	go func() {
-		err := server.Serve(listener)
-		if err != nil && err != http.ErrServerClosed {
-			serveErr <- err
-		} else {
-			serveErr <- nil
-		}
+		serveErr <- server.Serve(listener)
 	}()
 	client := &http.Client{Timeout: requestTimeout}
 	if err := register(client, envURL, port); err != nil {
-		_ = server.Close()
+		_ = listener.Close()
 		return err
 	}
 	fmt.Fprint(os.Stdout, "[forge] registered; waiting for the env to say done\n")
@@ -181,18 +172,14 @@ func run() error {
 		return fmt.Errorf("the server stopped before the env said done")
 	case <-done:
 	}
-	_ = server.Close()
+	_ = listener.Close()
 	fmt.Fprint(os.Stdout, "[forge] done\n")
 	return nil
 }
 
 // serveForever serves until the listener fails; it never returns nil.
-func serveForever(server *http.Server, listener net.Listener) error {
-	err := server.Serve(listener)
-	if err == http.ErrServerClosed {
-		return fmt.Errorf("the standalone server stopped")
-	}
-	return err
+func serveForever(server *forgeServer, listener net.Listener) error {
+	return server.Serve(listener)
 }
 
 func main() {

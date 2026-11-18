@@ -217,9 +217,14 @@ type Repo struct {
 	deflateCount atomic.Int64
 	packCache    sync.Map // string -> *packCacheEntry
 	packCount    atomic.Int64
-	jsonCache    sync.Map // string -> []byte
-	diffCache    sync.Map // string -> *MergeInfo
-	diffCount    atomic.Int64
+	// packMu serializes pack builds on a cache miss (singleflight): 50
+	// concurrent identical fetches build the pack once instead of 50
+	// times. It is only ever taken inside fetchPack, under the store
+	// read lock, so no lock ordering cycle exists.
+	packMu    sync.Mutex
+	jsonCache sync.Map // string -> []byte
+	diffCache sync.Map // string -> *MergeInfo
+	diffCount atomic.Int64
 }
 
 // NewRepo builds an empty repository. It does not register itself.
